@@ -1,60 +1,37 @@
 pipeline {
-  agent none
-  
-  stages {
-    // Etapa de construcción con Maven
-    stage('Maven Install') {
-      agent {
-        docker {
-          image 'maven:3.8.6-openjdk-11'  // Versión más reciente y estable
-          args '-v $HOME/.m2:/root/.m2'   // Cachear dependencias
-        }
-      }
-      steps {
-        sh 'mvn clean install'
-      }
+    agent any
+
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub')
+        DOCKER_IMAGE = "santi099/spring-petclinic"
     }
 
-    // Etapa de construcción de la imagen Docker
-    stage('Docker Build') {
-      agent any
-      steps {
-        script {
-          // Verifica que el Dockerfile exista
-          if (!fileExists('Dockerfile')) {
-            error("Dockerfile no encontrado en el directorio raíz")
-          }
-          sh 'docker build -t santi099/spring-petclinic:latest .'
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-      }
-    }
-
-    // Nueva etapa: Push a Docker Hub
-    stage('Docker Push') {
-      agent any
-      when {
-        branch 'main'  // Solo ejecutar en la rama principal
-      }
-      steps {
-        withCredentials([[
-          $class: 'UsernamePasswordMultiBinding',
-          credentialsId: 'docker-hub-creds',  // ID de las credenciales en Jenkins
-          usernameVariable: 'DOCKER_HUB_USER',
-          passwordVariable: 'DOCKER_HUB_PASSWORD'
-        ]]) {
-          sh '''
-            echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
-            docker push santi099/spring-petclinic:latest
-          '''
+        stage('Build') {
+            steps {
+                script {
+                    docker.image('maven:3.8.4').inside("-v $WORKSPACE:/app -w /app") {
+                        sh 'mvn clean package -DskipTests'
+                    }
+                }
+            }
         }
-      }
+        stage('Docker Build') {
+            steps {
+                sh 'docker build -t $DOCKER_IMAGE .'
+            }
+        }
+        stage('Docker Push') {
+            steps {
+                withDockerRegistry([credentialsId: 'dockerhub', url: '']) {
+                    sh 'docker push $DOCKER_IMAGE'
+                }
+            }
+        }
     }
-  }
-
-  post {
-    always {
-      // Limpieza: elimina credenciales temporales
-      sh 'docker logout'
-    }
-  }
 }
