@@ -24,12 +24,12 @@ pipeline {
         stage('Maven Build') {
             agent {
                 docker {
-                    image 'maven:3.8.6-jdk-17'  // Imagen con Java 17
-                    args '-v $HOME/.m2:/root/.m2 --platform linux/amd64'  # Cache + arquitectura específica
+                    image 'maven:3.8.6-jdk-17'
+                    args '-v $HOME/.m2:/root/.m2 --platform linux/amd64'  // Cache + arquitectura específica
                 }
             }
             steps {
-                sh 'mvn clean install -Denforcer.skip=true'  # Opcional: Saltar validación de versión
+                sh 'mvn clean install -Denforcer.skip=true'  // Opcional: Saltar validación de versión
             }
         }
 
@@ -68,7 +68,6 @@ pipeline {
     post {
         always {
             echo "Limpiando workspace..."
-            // Limpieza adicional opcional
             sh 'docker system prune -f || true'
         }
     }
