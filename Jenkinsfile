@@ -1,37 +1,56 @@
+#!groovy
 pipeline {
-    agent any
-
-    environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub')
-        DOCKER_IMAGE = "santi099/spring-petclinic"
+  agent none
+  
+  stages {
+    // Etapa 1: Build con Maven
+    stage('Maven Install') {
+      agent {
+        docker {
+          image 'maven:3.8.6-openjdk-17'  // Versión más reciente
+          args '-v $HOME/.m2:/root/.m2'    // Cache de dependencias
+        }
+      }
+      steps {
+        sh 'mvn clean install'
+      }
     }
-
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
+    
+    // Etapa 2: Construcción de Docker
+    stage('Docker Build') {
+      agent any
+      steps {
+        script {
+          // Verificar que el Dockerfile existe
+          if (!fileExists('Dockerfile')) {
+            error("Dockerfile no encontrado")
+          }
+          sh 'docker build -t santi099/spring-petclinic:latest .'
         }
-        stage('Build') {
-            steps {
-                script {
-                    docker.image('maven:3.8.4').inside("-v $WORKSPACE:/app -w /app") {
-                        sh 'mvn clean package -DskipTests'
-                    }
-                }
-            }
-        }
-        stage('Docker Build') {
-            steps {
-                sh 'docker build -t $DOCKER_IMAGE .'
-            }
-        }
-        stage('Docker Push') {
-            steps {
-                withDockerRegistry([credentialsId: 'dockerhub', url: '']) {
-                    sh 'docker push $DOCKER_IMAGE'
-                }
-            }
-        }
+      }
     }
+    
+    // Etapa 3: Push a Docker Hub
+    stage('Docker Push') {
+      agent any
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'docker-hub-creds',  // Asegúrate que este ID existe en Jenkins
+          passwordVariable: 'DOCKER_HUB_PASSWORD',
+          usernameVariable: 'DOCKER_HUB_USER'
+        )]) {
+          sh '''
+            echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
+            docker push santi099/spring-petclinic:latest
+          '''
+        }
+      }
+    }
+  }
+  
+  post {
+    always {
+      sh 'docker logout'  // Limpieza segura
+    }
+  }
 }
