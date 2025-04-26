@@ -1,56 +1,76 @@
-#!groovy
 pipeline {
-  agent none
-  
-  stages {
-    // Etapa 1: Build con Maven
-    stage('Maven Install') {
-      agent {
-        docker {
-          image 'maven:3.8.6-openjdk-17'  // Versión más reciente
-          args '-v $HOME/.m2:/root/.m2'    // Cache de dependencias
-        }
-      }
-      steps {
-        sh 'mvn clean install'
-      }
-    }
+    agent any  // Cambiado de 'none' a 'any' para el contexto global
     
-    // Etapa 2: Construcción de Docker
-    stage('Docker Build') {
-      agent any
-      steps {
-        script {
-          // Verificar que el Dockerfile existe
-          if (!fileExists('Dockerfile')) {
-            error("Dockerfile no encontrado")
-          }
-          sh 'docker build -t santi099/spring-petclinic:latest .'
+    environment {
+        DOCKER_IMAGE = 'santi099/spring-petclinic'
+        DOCKER_TAG = 'latest'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    extensions: [],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/sant1ag0Rr/spring-petclinic.git',
+                        credentialsId: 'github-creds'  // Credenciales específicas para GitHub
+                    ]]
+                ])
+            }
         }
-      }
-    }
-    
-    // Etapa 3: Push a Docker Hub
-    stage('Docker Push') {
-      agent any
-      steps {
-        withCredentials([usernamePassword(
-          credentialsId: 'docker-hub-creds',  // Asegúrate que este ID existe en Jenkins
-          passwordVariable: 'DOCKER_HUB_PASSWORD',
-          usernameVariable: 'DOCKER_HUB_USER'
-        )]) {
-          sh '''
-            echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
-            docker push santi099/spring-petclinic:latest
-          '''
+
+        stage('Maven Build') {
+            agent {
+                docker {
+                    image 'maven:3.8.6-jdk-11'  // Imagen oficial existente
+                    args '-v $HOME/.m2:/root/.m2'
+                }
+            }
+            steps {
+                sh 'mvn clean install'
+            }
         }
-      }
+
+        stage('Docker Build') {
+            agent any
+            steps {
+                script {
+                    if (!fileExists('Dockerfile')) {
+                        error("Dockerfile no encontrado")
+                    }
+                    sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                }
+            }
+        }
+
+        stage('Docker Push') {
+            agent any
+            when {
+                branch 'main'
+            }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-hub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    '''
+                }
+            }
+        }
     }
-  }
-  
-  post {
-    always {
-      sh 'docker logout'  // Limpieza segura
+
+    post {
+        always {
+            script {
+                // Limpieza segura que no requiere node context
+                echo "Limpiando workspace..."
+            }
+        }
     }
-  }
 }
