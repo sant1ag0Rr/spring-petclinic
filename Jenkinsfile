@@ -15,7 +15,7 @@ pipeline {
                     extensions: [],
                     userRemoteConfigs: [[
                         url: 'https://github.com/sant1ag0Rr/spring-petclinic.git',
-                        credentialsId: 'github-creds'  // Usar credenciales GitHub
+                        credentialsId: 'github-token'
                     ]]
                 ])
             }
@@ -24,7 +24,7 @@ pipeline {
         stage('Maven Build') {
             agent {
                 docker {
-                    image 'maven:3.8.7-jdk-17'  // Imagen oficial existente
+                    image 'maven:3.9.6-eclipse-temurin-17'  // Imagen verificada
                     args '-v $HOME/.m2:/root/.m2'
                 }
             }
@@ -67,7 +67,7 @@ pipeline {
 
     post {
         always {
-            echo "Limpiando workspace..."
+            echo "Pipeline completado - Limpieza de workspace"
         }
     }
 }
